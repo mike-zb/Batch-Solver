@@ -213,7 +213,7 @@ let work;
 
         function saveAppState() {
             if (restoringState) return;
-            const fields = ["ignore", "solve", "pre-adjustments", "post-adjustments", "sortBy", "secondary-metric", "statVis", "showPostAdj", "maxSolutions", "rankESQ", "esq-gen-select", "generationESQ", "img-select", "faceletColors", "overrideMask", "generatedMask"];
+            const fields = ["ignore", "solve", "pre-adjustments", "post-adjustments", "sortBy", "secondary-metric", "statVis", "showPostAdj", "maxSolutions", "rankESQ", "esq-gen-select", "generationESQ", "img-select", "faceletColors", "fillColor", "fillOpacity", "overrideMask", "generatedMask"];
             const values = {};
             for (const id of fields) {
                 const element = document.getElementById(id);
@@ -274,6 +274,7 @@ let work;
                 });
                 visibility("statVis", "statistics-data");
                 esqGenSelected(document.getElementById("esq-gen-select"));
+                updateFillOpacityLabel();
                 updateSubgroupValue();
             } catch (error) {
                 console.warn("Stored settings could not be restored.", error);
@@ -343,9 +344,29 @@ let work;
                 return document.getElementById("faceletColors").value.slice(0, 54);
             }
             if (document.getElementById("generatedMask").checked) {
-                return generateMaskFromIgnore(stripCommentLines(document.getElementById("ignore").value));
+                const mask = generateMaskFromIgnore(stripCommentLines(document.getElementById("ignore").value));
+                document.getElementById("faceletColors").value = mask;
+                return mask;
             }
             return "";
+        }
+
+        function updateFillOpacityLabel() {
+            const opacity = Math.min(100, Math.max(0, Number(document.getElementById("fillOpacity").value)));
+            document.getElementById("fillOpacity").value = opacity;
+            document.getElementById("fillOpacityValue").value = `${opacity}%`;
+        }
+
+        function syncGeneratedMaskField() {
+            if (!document.getElementById("generatedMask").checked) return;
+            document.getElementById("faceletColors").value = generateMaskFromIgnore(stripCommentLines(document.getElementById("ignore").value));
+        }
+
+        function fillSettingsChanged() {
+            updateFillOpacityLabel();
+            syncGeneratedMaskField();
+            saveAppState();
+            generateImagePreview();
         }
 
         function maskModeChanged(mode) {
@@ -353,6 +374,7 @@ let work;
             const override = document.getElementById("overrideMask");
             if (mode === "generated" && generated.checked) override.checked = false;
             if (mode === "override" && override.checked) generated.checked = false;
+            syncGeneratedMaskField();
             saveAppState();
             generateImagePreview();
         }
@@ -371,18 +393,24 @@ let work;
 
         function generateMaskFromIgnore(ignore) {
             const mask = [...FACELET_COLORS];
+            const fillColor = document.getElementById("fillColor").value;
             const aliases = {URB: "UBR", ULF: "UFL", DRB: "DBR", DLF: "DFL"};
             const pieces = ignore.match(/\b[UDFBLR]{2,3}\b/g) || [];
             for (const rawPiece of pieces) {
                 const facelets = PIECE_FACELETS[aliases[rawPiece] || rawPiece];
                 if (!facelets) continue;
-                for (const index of Object.values(facelets)) mask[index] = "n";
+                for (const index of Object.values(facelets)) mask[index] = fillColor;
             }
             return mask.join("");
         }
 
-        document.getElementById("ignore-editor").addEventListener("input", generateImagePreview);
-        document.getElementById("ignore-editor").addEventListener("change", generateImagePreview);
+        function generatedMaskSourceChanged() {
+            syncGeneratedMaskField();
+            generateImagePreview();
+        }
+
+        document.getElementById("ignore-editor").addEventListener("input", generatedMaskSourceChanged);
+        document.getElementById("ignore-editor").addEventListener("change", generatedMaskSourceChanged);
 
         function esqGenSelected(opt) {
             let esqGenField = document.getElementById("generationESQ");
@@ -416,17 +444,32 @@ x: (UR BR DR FR) (UFR-1 UBR+1 DBR-1 DFR+1) (UL BL DL FL) (UFL+1 UBL-1 DBL+1 DFL-
 y: (UF UL UB UR) (UFR UFL UBL UBR) (DF DL DB DR) (DFR DFL DBL DBR) (FR+1 FL+1 BL+1 BR+1) (RL FB+1 RL+1)
 z: (UF+1 FR+1 DF+1 FL+1) (UFR+1 DFR-1 DFL+1 UFL-1) (UB+1 BR+1 DB+1 BL+1) (UBR-1 DBR+1 DBL-1 UBL+1) (UR+1 DR+1 DL+1 UL+1) (UD RL+1 UD+1)`;
 
-        imageSelected(document.getElementById("img-select"));
+        const IMAGE_PALETTE = {
+            n: "#000000", d: "#404040", l: "#808080", s: "#BFBFBF",
+            w: "#E8E8E8", y: "#D8D900", r: "#A61300", o: "#DB7B00",
+            b: "#001E93", g: "#008F0E", m: "#A83DD9", p: "#F33D7B",
+            t: "rgba(0,0,0,0)"
+        };
+
+        function cubeWithFillPalette() {
+            const cube = TTk.TwistyPuzzle(3);
+            const fillColor = document.getElementById("fillColor").value;
+            const opacity = Math.min(100, Math.max(0, Number(document.getElementById("fillOpacity").value))) / 100;
+            const hex = IMAGE_PALETTE[fillColor];
+            const rgb = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
+            const palette = {...IMAGE_PALETTE, [fillColor]: `rgba(${rgb.join(",")},${opacity})`};
+            return cube.pzl({...cube.pzl(), palette});
+        }
 
         function cubeImage(fc, setup="", yawOffset=0) {
             let imgType = document.getElementById("img-select").value;
             let cube;
             if (imgType == "3x3x3-top") {
-                cube = TTk.TwistyPuzzle(3).alg(setup);
+                cube = cubeWithFillPalette().alg(setup);
                 cube.context().projection().focalFac(-0.905).near(0.83);
                 cube.context().transform().pitch(Math.PI/2).yaw(0);
             } else {
-                cube = TTk.TwistyPuzzle(3).alg(setup);
+                cube = cubeWithFillPalette().alg(setup);
                 cube.context().transform().pitch(parseFloat(document.getElementById("imgPitch").value,10)/180*Math.PI).yaw((yawOffset+parseFloat(document.getElementById("imgYaw").value,10))/180*Math.PI);
             }
             cube = cube.size({width:parseFloat(document.getElementById("imgSize").value,10), height:parseFloat(document.getElementById("imgSize").value,10)})
@@ -443,7 +486,8 @@ z: (UF+1 FR+1 DF+1 FL+1) (UFR+1 DFR-1 DFL+1 UFL-1) (UB+1 BR+1 DB+1 BL+1) (UBR-1 
             cube("#imgPreview");
         }
 
-        generateImagePreview();
+        updateFillOpacityLabel();
+        imageSelected(document.getElementById("img-select"));
 
         function createSolutionTable() {
             document.getElementById("output-grid").insertAdjacentHTML("beforeend", `

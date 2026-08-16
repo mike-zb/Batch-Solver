@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Batch Solver</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=fill-controls-1">
 </head>
 <body>
     <main class="app-shell">
@@ -114,6 +114,19 @@ _2: 3</textarea></label>
                         <div id="imgRot"><label>X rotation <input type="number" class="inputNum" id="imgPitch" value="30" oninput="generateImagePreview()"></label><label>Y rotation <input type="number" class="inputNum" id="imgYaw" value="40" oninput="generateImagePreview()"></label></div>
                         <label><input type="checkbox" id="overrideMask" onchange="maskModeChanged('override')"> Override mask</label>
                         <input id="faceletColors" type="text" maxlength="54" spellcheck="false" oninput="generateImagePreview()">
+                        <label>Fill color
+                            <select id="fillColor" onchange="fillSettingsChanged()">
+                                <option value="n" selected>Black</option>
+                                <option value="l">Light Gray</option>
+                                <option value="d">Dark Gray</option>
+                            </select>
+                        </label>
+                        <label>Fill opacity
+                            <span class="fill-opacity-control">
+                                <input id="fillOpacity" type="range" min="0" max="100" value="100" oninput="fillSettingsChanged()">
+                                <output id="fillOpacityValue" for="fillOpacity">100%</output>
+                            </span>
+                        </label>
                         <label><input type="checkbox" id="previewVis" onclick="previewToggled(this)"> Show preview</label>
                         <div id="imgPreview" hidden></div>
                         <input hidden type="range" id="previewYaw" oninput="generateImagePreview()" value="0" min="-265" max="265" step="1">
@@ -197,6 +210,6 @@ _2: 3</textarea></label>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js" crossorigin="anonymous"></script>
     <script src="twistysim.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=fill-controls-1"></script>
 </body>
 </html>

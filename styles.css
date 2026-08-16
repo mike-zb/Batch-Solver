@@ -404,6 +404,9 @@ button:disabled { opacity: .35; pointer-events: none; }
 .depth-panel { min-height: 100%; padding: 0 !important; border: 0 !important; background: transparent !important; }
 #imageOptions { display: grid; align-content: start; gap: .65rem; }
 #faceletColors { width: 100%; padding: .55rem; }
+.fill-opacity-control { display: grid; grid-template-columns: minmax(0, 1fr) 4ch; align-items: center; gap: .7rem; }
+#fillOpacity { width: 100%; accent-color: var(--green); }
+#fillOpacityValue { color: var(--muted); text-align: right; }
 #imgRot { display: flex; flex-wrap: wrap; gap: 1rem; }
 #mask-editor {
     min-height: 0;
