@@ -24,6 +24,9 @@ let work;
         let moveColorSettings = {};
         let colorMenuMove = null;
         let colorMenuFilter = "all";
+        let suppressedMoveClick = null;
+        let solutionMenuAlgorithm = "";
+        const ALG_VISUALIZATION_URL = "https://alg.cubing.net/?setup=x2&type=alg&alg=";
         const MOVE_COLORS = ["#ff5c5c", "#ff8a3d", "#f2c94c", "#6fcf97", "#2dd4bf", "#56ccf2", "#4d9cff", "#6c63ff", "#9b6cff", "#c65cff", "#e056fd", "#ff63b8", "#ffffff", "#c7d0d9", "#8d99a6", "#5c6770"];
 
         const MOVE_GRID = ["U", "u", "D", "d", "R", "r", "L", "l", "F", "f", "B", "b"];
@@ -43,9 +46,8 @@ let work;
             refreshSolutionColors();
         }
 
-        function openMoveColorMenu(event, button) {
+        function openMoveColorMenuAt(button, clientX, clientY) {
             if (!button.classList.contains("active")) return;
-            event.preventDefault();
             colorMenuMove = button.dataset.move;
             const menu = document.getElementById("move-color-menu");
             menu.querySelector('[data-filter="cw"]').textContent = colorMenuMove;
@@ -54,10 +56,43 @@ let work;
             menu.hidden = false;
             menu.querySelector(".move-color-palette").hidden = true;
             updateMoveColorMenuSelections();
-            const left = Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8);
-            const top = Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8);
+            const left = Math.min(clientX, window.innerWidth - menu.offsetWidth - 8);
+            const top = Math.min(clientY, window.innerHeight - menu.offsetHeight - 8);
             menu.style.left = `${Math.max(8, left)}px`;
             menu.style.top = `${Math.max(8, top)}px`;
+        }
+
+        function openMoveColorMenu(event, button) {
+            if (!button.classList.contains("active")) return;
+            event.preventDefault();
+            openMoveColorMenuAt(button, event.clientX, event.clientY);
+        }
+
+        function addMoveLongPress(button) {
+            let timer = null;
+            let startX = 0;
+            let startY = 0;
+            const cancel = () => {
+                clearTimeout(timer);
+                timer = null;
+            };
+            button.addEventListener("pointerdown", event => {
+                if (event.pointerType !== "touch" || !button.classList.contains("active")) return;
+                startX = event.clientX;
+                startY = event.clientY;
+                timer = setTimeout(() => {
+                    suppressedMoveClick = button;
+                    openMoveColorMenuAt(button, startX, startY);
+                    setTimeout(() => {
+                        if (suppressedMoveClick === button) suppressedMoveClick = null;
+                    }, 1000);
+                }, 500);
+            });
+            button.addEventListener("pointermove", event => {
+                if (Math.hypot(event.clientX - startX, event.clientY - startY) > 10) cancel();
+            });
+            button.addEventListener("pointerup", cancel);
+            button.addEventListener("pointercancel", cancel);
         }
 
         function closeMoveColorMenu() {
@@ -165,8 +200,16 @@ let work;
                 button.dataset.move = move;
                 button.textContent = move;
                 if (move === "U") button.classList.add("active");
-                button.addEventListener("click", () => toggleFaceMove(button));
+                button.addEventListener("click", event => {
+                    if (suppressedMoveClick === button) {
+                        suppressedMoveClick = null;
+                        event.preventDefault();
+                        return;
+                    }
+                    toggleFaceMove(button);
+                });
                 button.addEventListener("contextmenu", event => openMoveColorMenu(event, button));
+                addMoveLongPress(button);
                 (SLICE_MOVES.includes(move) ? slices : faces).appendChild(button);
             }
             grid.append(faces, slices);
@@ -253,6 +296,7 @@ let work;
                 if (document.getElementById("overrideMask").checked && document.getElementById("generatedMask").checked) {
                     document.getElementById("generatedMask").checked = false;
                 }
+                updateMaskFieldAvailability();
                 document.querySelector(".prune").value = Math.min(20, Math.max(0, Number(state.prune ?? 3)));
                 document.querySelector(".search").value = Math.min(20, Math.max(0, Number(state.search ?? 5)));
                 const legacySlices = Object.entries(state.sliceVariants || {})
@@ -374,6 +418,7 @@ let work;
             const override = document.getElementById("overrideMask");
             if (mode === "generated" && generated.checked) override.checked = false;
             if (mode === "override" && override.checked) generated.checked = false;
+            updateMaskFieldAvailability();
             syncGeneratedMaskField();
             saveAppState();
             generateImagePreview();
@@ -408,6 +453,15 @@ let work;
             syncGeneratedMaskField();
             generateImagePreview();
         }
+
+        function updateMaskFieldAvailability() {
+            const field = document.getElementById("faceletColors");
+            const editable = document.getElementById("overrideMask").checked;
+            field.readOnly = !editable;
+            field.setAttribute("aria-disabled", String(!editable));
+        }
+
+        updateMaskFieldAvailability();
 
         document.getElementById("ignore-editor").addEventListener("input", generatedMaskSourceChanged);
         document.getElementById("ignore-editor").addEventListener("change", generatedMaskSourceChanged);
@@ -492,7 +546,7 @@ z: (UF+1 FR+1 DF+1 FL+1) (UFR+1 DFR-1 DFL+1 UFL-1) (UB+1 BR+1 DB+1 BL+1) (UBR-1 
         function createSolutionTable() {
             document.getElementById("output-grid").insertAdjacentHTML("beforeend", `
                 <section class="case-card" data-case="${solveID}">
-                    <div class="case-media"><span id="caseHeader${solveID}"></span></div>
+                    <div class="case-media"><span id="caseNumber${solveID}" class="case-number"></span><span id="caseHeader${solveID}"></span></div>
                     <div id="solutions${solveID}" class="case-solutions"></div>
                 </section>`);
         }
@@ -793,6 +847,110 @@ z: (UF+1 FR+1 DF+1 FL+1) (UFR+1 DFR-1 DFL+1 UFL-1) (UB+1 BR+1 DB+1 BL+1) (UBR-1 
                 .replace(/(\[[^\]]+\])$/, '<span class="secondary-metric">$1</span>');
         }
 
+        function visualizationAlgorithm(solution) {
+            return solution.replace(/\s*\[[^\]]+\]\s*$/, "").trim();
+        }
+
+        function escapeAttribute(value) {
+            return value
+                .replaceAll("&", "&amp;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;");
+        }
+
+        function openAlgVisualization(algorithm) {
+            const queryAlgorithm = algorithm.replaceAll("'", "-").replaceAll(" ", "_");
+            const opened = window.open(ALG_VISUALIZATION_URL + queryAlgorithm, "_blank", "noopener");
+            if (opened) opened.opener = null;
+        }
+
+        function solutionFromEvent(event) {
+            const item = event.target.closest(".solution-item");
+            if (!item || !document.getElementById("output-grid").contains(item)) return "";
+            return item.dataset.algorithm || visualizationAlgorithm(item.textContent);
+        }
+
+        function closeSolutionActionMenu() {
+            const menu = document.getElementById("solution-action-menu");
+            if (menu) menu.hidden = true;
+        }
+
+        function openSolutionActionMenu(algorithm, clientX, clientY) {
+            if (!algorithm) return;
+            solutionMenuAlgorithm = algorithm;
+            const menu = document.getElementById("solution-action-menu");
+            menu.hidden = false;
+            const left = Math.min(clientX, window.innerWidth - menu.offsetWidth - 8);
+            const top = Math.min(clientY, window.innerHeight - menu.offsetHeight - 8);
+            menu.style.left = `${Math.max(8, left)}px`;
+            menu.style.top = `${Math.max(8, top)}px`;
+            menu.querySelector("button").focus({preventScroll: true});
+        }
+
+        function createSolutionActionMenu() {
+            const menu = document.createElement("div");
+            menu.id = "solution-action-menu";
+            menu.className = "solution-action-menu";
+            menu.hidden = true;
+            menu.setAttribute("role", "menu");
+            menu.innerHTML = `<button type="button" role="menuitem" data-solution-action="copy"><img src="copy-icon.png" alt="">Copy</button>
+                <button type="button" role="menuitem" data-solution-action="visualize"><img src="visualize-icon.png" alt="">Visualize</button>`;
+            menu.addEventListener("click", event => {
+                const action = event.target.closest("[data-solution-action]")?.dataset.solutionAction;
+                if (action === "copy") navigator.clipboard.writeText(solutionMenuAlgorithm);
+                if (action === "visualize") openAlgVisualization(solutionMenuAlgorithm);
+                closeSolutionActionMenu();
+            });
+            document.body.appendChild(menu);
+            document.addEventListener("pointerdown", event => {
+                if (!menu.hidden && !menu.contains(event.target)) closeSolutionActionMenu();
+            });
+            document.addEventListener("keydown", event => {
+                if (event.key === "Escape") closeSolutionActionMenu();
+            });
+        }
+
+        function addSolutionMenuInteractions() {
+            const output = document.getElementById("output-grid");
+            let longPressTimer = null;
+            let longPressTarget = null;
+            let startX = 0;
+            let startY = 0;
+            const cancelLongPress = () => {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+                longPressTarget = null;
+            };
+            output.addEventListener("contextmenu", event => {
+                const algorithm = solutionFromEvent(event);
+                if (!algorithm) return;
+                event.preventDefault();
+                openSolutionActionMenu(algorithm, event.clientX, event.clientY);
+            });
+            output.addEventListener("pointerdown", event => {
+                if (event.pointerType !== "touch") return;
+                const algorithm = solutionFromEvent(event);
+                if (!algorithm) return;
+                longPressTarget = algorithm;
+                startX = event.clientX;
+                startY = event.clientY;
+                longPressTimer = setTimeout(() => {
+                    openSolutionActionMenu(longPressTarget, startX, startY);
+                    longPressTimer = null;
+                }, 500);
+            });
+            output.addEventListener("pointermove", event => {
+                if (!longPressTimer) return;
+                if (Math.hypot(event.clientX - startX, event.clientY - startY) > 10) cancelLongPress();
+            });
+            output.addEventListener("pointerup", cancelLongPress);
+            output.addEventListener("pointercancel", cancelLongPress);
+        }
+
+        createSolutionActionMenu();
+        addSolutionMenuInteractions();
+
         function refreshSolutionColors() {
             document.querySelectorAll(".solution-item").forEach(item => {
                 item.innerHTML = formatSolution(item.textContent);
@@ -858,7 +1016,8 @@ z: (UF+1 FR+1 DF+1 FL+1) (UFR+1 DFR-1 DFL+1 UFL-1) (UB+1 BR+1 DB+1 BL+1) (UBR-1 
                 const speed = String(updatedEntries[index].speed);
                 let solutionsHTML = "";
                 while (index < updatedEntries.length && String(updatedEntries[index].speed) === speed) {
-                    solutionsHTML += `<span class="solution-item">${formatSolution(updatedEntries[index].solution)}</span>`;
+                    const algorithm = visualizationAlgorithm(updatedEntries[index].solution);
+                    solutionsHTML += `<span class="solution-item" data-algorithm="${escapeAttribute(algorithm)}">${formatSolution(updatedEntries[index].solution)}</span>`;
                     index++;
                 }
                 groupedHTML += `<div class="solution-group-row" data-speed="${speed}">
@@ -866,7 +1025,7 @@ z: (UF+1 FR+1 DF+1 FL+1) (UFR+1 DFR-1 DFL+1 UFL-1) (UB+1 BR+1 DB+1 BL+1) (UBR-1 
                     <div class="algorithm-group">${solutionsHTML}</div>
                 </div>`;
             }
-            document.getElementById("solutions"+solveID).innerHTML = groupedHTML;
+            document.getElementById("solutions"+solveID).innerHTML = `<div class="solution-groups">${groupedHTML}</div>`;
             speedBuffer = [];
             solutionsBuffer = [];
         }
@@ -1040,12 +1199,13 @@ z: (UF+1 FR+1 DF+1 FL+1) (UFR+1 DFR-1 DFL+1 UFL-1) (UB+1 BR+1 DB+1 BL+1) (UBR-1 
                         initNextState();
                     }
                     caseNum = event.data.value.num;
+                    document.getElementById("caseNumber"+solveID).textContent = "#"+caseNum;
                     if (document.getElementById("imageVis").checked) {
                         let cube = cubeImage(colMask, event.data.value.setup);
                         cube("#caseHeader"+solveID);
                         makeImageCopyable(solveID)
                     } else {
-                        document.getElementById("caseHeader"+solveID).innerHTML = "#"+solveID;
+                        document.getElementById("caseHeader"+solveID).innerHTML = "";
                     }
                 } else if (event.data.type === "num-states") {
                     document.getElementById("info-num-cases").innerHTML = event.data.value;
