@@ -420,6 +420,18 @@ button:disabled { opacity: .35; pointer-events: none; }
 .tooltiptext { visibility: hidden; position: absolute; bottom: 140%; left: 50%; width: 150px; margin-left: -75px; padding: .4rem; border-radius: 6px; background: #050708; text-align: center; }
 .tooltip:hover .tooltiptext { visibility: visible; }
 
+.page-credit {
+    margin: 2.5rem auto 1.75rem;
+    padding: 0 1rem;
+    color: #71808a;
+    font-size: .75rem;
+    line-height: 1.5;
+    text-align: center;
+}
+.page-credit span { margin: 0 .35rem; }
+.page-credit a { color: #8998a2; text-decoration: none; transition: color .15s ease; }
+.page-credit a:hover, .page-credit a:focus-visible { color: var(--text); }
+
 @media (max-width: 800px) {
     .app-shell { padding: 1.25rem; }
     .solver-config-row, .puzzle-config, .bottom-panels { grid-template-columns: 1fr; }
