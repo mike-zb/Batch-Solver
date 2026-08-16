@@ -1,5 +1,0 @@
-Optimizations to make:
-
-- Only calculate incomplete table stuff at nodes that actually need it
-- For OrientPerm groups, you only need to track some of the pieces
-- Faster move composition: O(pieces affected) instead of O(pieces)

@@ -1,1 +1,29 @@
-"emsdk/" 
+# Dependencies
+node_modules/
+emsdk/
+
+# Build and test output
+dist/
+build/
+coverage/
+*.wasm.map
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~

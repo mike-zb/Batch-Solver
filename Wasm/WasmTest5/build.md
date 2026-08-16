@@ -1,1 +1,0 @@
-emcc schreier_sims.cpp -O2 -std=c++17 -lembind -o a.out.js -s ENVIRONMENT=worker -s MODULARIZE=0 -s EXPORT_ES6=0 -s ALLOW_MEMORY_GROWTH=1 
