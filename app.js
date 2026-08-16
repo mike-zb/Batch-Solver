@@ -909,6 +909,9 @@ z: (UF+1 FR+1 DF+1 FL+1) (UFR+1 DFR-1 DFL+1 UFL-1) (UB+1 BR+1 DB+1 BL+1) (UBR-1 
             document.addEventListener("keydown", event => {
                 if (event.key === "Escape") closeSolutionActionMenu();
             });
+            document.addEventListener("scroll", closeSolutionActionMenu, true);
+            document.addEventListener("wheel", closeSolutionActionMenu, {passive: true});
+            window.addEventListener("resize", closeSolutionActionMenu);
         }
 
         function addSolutionMenuInteractions() {
