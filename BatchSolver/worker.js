@@ -375,7 +375,6 @@ function parseBatch(input) {
 }
 
 function calcState(state, subPuzzles, showPostAdj, optimiseBoolean) {
-    let numSolutions = 0; //added for optimisation
     for (let subData of subPuzzles) {
         let searchDepth = parseInt(subData.search, 10);
         if (searchDepth !== searchDepth) {// that means it's NaN
@@ -385,14 +384,8 @@ function calcState(state, subPuzzles, showPostAdj, optimiseBoolean) {
             else {postMessage({value: '"' + subData.search + '" is not a valid search depth.', type: "stop"})}
         }
         for (let solution of subData.puzzle.solve(state, searchDepth, showPostAdj)) {
-            if(optimiseBoolean) { //optimised version
-                if(numSolutions < 1){
-                    numSolutions++;
-                    postMessage({value: solution, type: "solution"});
-                } else {return;}
-            } else { //normal version
-                postMessage({value: solution, type: "solution"});
-            }
+            postMessage({value: solution, type: "solution"});
+            if (optimiseBoolean) {return}
         }
         postMessage({value: 0, type: "set-depth"})
     }
@@ -469,6 +462,51 @@ function getMoveNexts(moveWeights) {
         moveNexts.push(moveRanking === moveWeights.length ? -1 : moveOrder[moveRanking])
     }
     return moveNexts.concat(moveOrder[0]);
+}
+
+class MinHeap {
+    constructor() {
+        this.items = [];
+    }
+
+    get length() {
+        return this.items.length;
+    }
+
+    peekCost() {
+        return this.items[0].cost;
+    }
+
+    push(entry) {
+        let index = this.items.length;
+        this.items.push(entry);
+        while (index > 0) {
+            let parent = (index - 1) >> 1;
+            if (this.items[parent].cost <= entry.cost) {break}
+            this.items[index] = this.items[parent];
+            index = parent;
+        }
+        this.items[index] = entry;
+    }
+
+    pop() {
+        let root = this.items[0];
+        let last = this.items.pop();
+        if (this.items.length > 0) {
+            let index = 0;
+            while (true) {
+                let left = index * 2 + 1;
+                if (left >= this.items.length) {break}
+                let right = left + 1;
+                let child = right < this.items.length && this.items[right].cost < this.items[left].cost ? right : left;
+                if (this.items[child].cost >= last.cost) {break}
+                this.items[index] = this.items[child];
+                index = child;
+            }
+            this.items[index] = last;
+        }
+        return root;
+    }
 }
 
 class Puzzle {
@@ -596,12 +634,15 @@ class Puzzle {
 
     // executes sequence on specified starting state
     execute(start, sequence) {
-        let tempCube = [];
+        if (sequence.length === 0) {return start}
+        let buffers = [new Array(this.pcCount), new Array(this.pcCount)];
+        let current = start;
         for (let j=0; j<sequence.length; j++) {
-            this.mult(start, this.moves[sequence[j]],tempCube)
-            start = tempCube.slice();
+            let result = buffers[j & 1];
+            this.mult(current, this.moves[sequence[j]], result)
+            current = result;
         }
-        return start
+        return current
     }
 
     // returns next valid move given previous move. For example, U U2 is invalid, but U R is valid.
@@ -630,80 +671,6 @@ class Puzzle {
         while (true) {
             if (x === -1 || !(this.adjustMovesTable[x])) {return x};
             x = moveNextTable[x];
-        }
-    }
-
-    getCost(sequence, weightTable) {
-        let cost = 0;
-        for (let move of sequence) {
-            cost += weightTable[move];
-        }
-        return cost;
-    }
-
-    popAndAdvance(arr, moveNextTable) {
-        do {
-            arr.pop(); // remove last element
-            // increment next last element
-            if (arr.length > 1) {
-                arr[arr.length-1] = this.nextValid(arr[arr.length-2], arr[arr.length-1], moveNextTable);
-            } else if (arr.length) {
-                arr[0] = this.nextValidInitial(arr[0], moveNextTable);
-                if (arr[0] === -1) {arr.pop()}
-            } 
-            if (arr.length === 0) {return}
-        } while (arr[arr.length-1] === -1)
-    }
-    
-    // generates all sequences with an effective length (with weights, not including adjustments)
-    // in the range (seqLength-1, seqLength]. Yields [cost excluding adjustments, sequence]
-    *getPruneSequences(seqLength) {
-        if (seqLength === 0) {
-            for (let sequence of this.adjustSequences) {
-                yield [0, sequence]; // need to account for adjust moves
-            }
-            return;
-        }
-        postMessage({value: 1, type: "depthUpdate"});
-        let arr = [this.nextValidInitial(this.moves.length, this.inverseNexts)];
-        while (arr.length) {
-            let effectiveLength = this.getCost(arr, this.inverseWeights) - 1e-9;
-            if (effectiveLength <= seqLength) {
-                if (effectiveLength > seqLength-1) {
-                    for (let sequence of this.adjustSequences) {
-                        yield [effectiveLength + 1e-9, sequence.concat(arr)]; // need to account for adjust moves
-                    }
-                }
-                // add an element to arr
-                arr.push(this.nextValid(arr[arr.length-1], this.moves.length, this.inverseNexts));
-            }
-            if (effectiveLength + this.inverseWeights[arr[arr.length-1]] > seqLength) {this.popAndAdvance(arr, this.inverseNexts)}
-        }
-    }
-
-    // generates all sequences with an effective length (with weights, not including adjustments)
-    // in the range [seqLength-1, seqLength), NOT including the final move. Yields [cost excluding adjustments, sequence].
-    *getSearchSequences(seqLength) {
-        if (seqLength === 0) {
-            for (let sequence of this.adjustSequences) {
-                yield [0, sequence]; // need to account for adjust moves
-            }
-            return;
-        }
-        postMessage({value: 1, type: "depthUpdate"});
-        let arr = [this.nextValidInitial(this.moves.length, this.moveNexts)];
-        while (arr.length) {
-            let effectiveLength = this.getCost(arr, this.moveWeights) + 1e-9;
-            if (effectiveLength - this.moveWeights[arr[arr.length-1]] < seqLength) {
-                if (effectiveLength - this.moveWeights[arr[arr.length-1]] >= seqLength-1) {
-                    for (let sequence of this.adjustSequences) {
-                        yield [effectiveLength - 1e-9, sequence.concat(arr)];
-                    }
-                }
-                // add an element to arr
-                arr.push(this.nextValid(arr[arr.length-1], this.moves.length, this.moveNexts));            
-            } 
-            if (effectiveLength >= seqLength) {this.popAndAdvance(arr, this.moveNexts)}
         }
     }
 
@@ -755,16 +722,109 @@ class Puzzle {
         return result
     }
     
-    // create a prune table up to a given depth
-    createPrun(maxDepth) {
-        let tempTable = new Map();
-        for (let depth=0; depth<=maxDepth; depth++) {
-            for (let [cost, sequence] of this.getPruneSequences(depth)) {
-                let cubeStr = this.compressArr(this.execute(this.solved, sequence));
-                if (!(tempTable.has(cubeStr)) || tempTable.get(cubeStr)>cost) {tempTable.set(cubeStr, cost)}
+    _createPruneExpansion() {
+        let uniformWeights = this.inverseWeights.every(weight => weight === this.inverseWeights[0]);
+        let context = {
+            bestCosts: new Map(),
+            pruneTable: new Map(),
+            uniformWeights: uniformWeights,
+            queue: [],
+            queueHead: 0,
+            heap: uniformWeights ? null : new MinHeap()
+        };
+
+        for (let sequence of this.adjustSequences) {
+            let state = this.execute(this.solved, sequence);
+            let key = this.compressArr(state);
+            let contextKey = key + String.fromCharCode(0);
+            if (!context.bestCosts.has(contextKey)) {
+                context.bestCosts.set(contextKey, 0);
+                this._pushPruneState(context, {cost: 0, key: key, contextKey: contextKey, lastMove: -1, state: state});
             }
         }
-        this.pruneTable = tempTable;
+        return context;
+    }
+
+    _pushPruneState(context, entry) {
+        if (context.uniformWeights) {context.queue.push(entry)}
+        else {context.heap.push(entry)}
+    }
+
+    _pruneFrontierLength(context) {
+        return context.uniformWeights ? context.queue.length - context.queueHead : context.heap.length;
+    }
+
+    _peekPruneCost(context) {
+        return context.uniformWeights ? context.queue[context.queueHead].cost : context.heap.peekCost();
+    }
+
+    _popPruneState(context) {
+        if (!context.uniformWeights) {return context.heap.pop()}
+        let entry = context.queue[context.queueHead];
+        context.queue[context.queueHead] = null;
+        context.queueHead++;
+        return entry;
+    }
+
+    // Expands each state/last-move context once at its minimum known cost. The
+    // last move preserves validPairs semantics for arbitrary ESQ weights.
+    // Uniform weights use a FIFO frontier (BFS); non-uniform weights use a
+    // min-heap (Dijkstra).
+    _expandPruneThrough(context, maxCost, frontierLimit=Infinity) {
+        const epsilon = 1e-9;
+        while (this._pruneFrontierLength(context) > 0 && this._peekPruneCost(context) <= maxCost + epsilon) {
+            let entry = this._popPruneState(context);
+            if (context.bestCosts.get(entry.contextKey) !== entry.cost) {continue}
+
+            let stateCost = context.pruneTable.get(entry.key);
+            if (stateCost === undefined || entry.cost < stateCost) {context.pruneTable.set(entry.key, entry.cost)}
+            let childBuffer = new Array(this.pcCount);
+            for (let move=0; move<this.moves.length; move++) {
+                if (entry.lastMove === -1) {
+                    if (this.adjustMovesTable[move]) {continue}
+                } else if (!this.validPairs[entry.lastMove][move]) {
+                    continue;
+                }
+
+                let nextCost = entry.cost + this.inverseWeights[move];
+                if (nextCost > frontierLimit + epsilon) {continue}
+
+                this.mult(entry.state, this.moves[move], childBuffer);
+                let childKey = this.compressArr(childBuffer);
+                let childContextKey = childKey + String.fromCharCode(move + 1);
+                let previousCost = context.bestCosts.get(childContextKey);
+                if (previousCost === undefined || nextCost < previousCost) {
+                    let childState = childBuffer.slice();
+                    context.bestCosts.set(childContextKey, nextCost);
+                    this._pushPruneState(context, {
+                        cost: nextCost,
+                        key: childKey,
+                        contextKey: childContextKey,
+                        lastMove: move,
+                        state: childState
+                    });
+                }
+            }
+
+        }
+        if (context.uniformWeights && context.queueHead > 65536 && context.queueHead * 2 > context.queue.length) {
+            context.queue = context.queue.slice(context.queueHead);
+            context.queueHead = 0;
+        }
+    }
+
+    // create a prune table up to a given depth
+    createPrun(maxDepth) {
+        let context = this._createPruneExpansion();
+        let lastDepth = Math.floor(maxDepth);
+        if (lastDepth >= 0) {
+            this._expandPruneThrough(context, 0, lastDepth);
+            for (let depth=1; depth<=lastDepth; depth++) {
+                postMessage({value: 1, type: "depthUpdate"});
+                this._expandPruneThrough(context, depth, lastDepth);
+            }
+        }
+        this.pruneTable = context.pruneTable;
         this.pruneDepth = maxDepth;
     }
 
@@ -785,54 +845,171 @@ class Puzzle {
 
     // same as createPrun, but automatically determines a depth given a max size
     createPrunSized(maxSize) {
-        let tempTable = new Map();
+        let context = this._createPruneExpansion();
         let highestCost = Math.ceil(this.moveWeights[this.moveNexts.indexOf(-1)]);
         let prevSizes = [];
         let depth = 0;
         while (true) {
-            for (let [cost, sequence] of this.getPruneSequences(depth)) {
-                let cubeStr = this.compressArr(this.execute(this.solved, sequence));
-                if (!(tempTable.has(cubeStr)) || tempTable.get(cubeStr)>cost) {tempTable.set(cubeStr, cost)}
-            }
-            prevSizes.push(tempTable.size)
+            if (depth > 0) {postMessage({value: 1, type: "depthUpdate"})}
+            this._expandPruneThrough(context, depth);
+            prevSizes.push(context.pruneTable.size)
             if (this.stopPruning(maxSize, highestCost, prevSizes)) {break}
+            if (this._pruneFrontierLength(context) === 0) {break}
             depth++;
         }
-        this.pruneTable = tempTable;
+        this.pruneTable = context.pruneTable;
         this.pruneDepth = depth;
     }
 
-    // read all solutions from a given state under the prune table's depth
-    // not done yet
-    *readPrun(state, partialSolve=[], showPostAdj, maxDepth=this.pruneDepth) { // maxDepth should be the same as the prune table's maxDepth
-        for (let m=0; m<this.moves.length; m++) {
-            if (partialSolve.length == 0 || this.validPairs[partialSolve[partialSolve.length-1]][m]) {
-                let nextState = this.execute(state, [m]);
-                let nextDistance = this.pruneTable.get(this.compressArr(nextState));
-                if (nextDistance === 0) { 
-                    let fullSolve = partialSolve.concat(m);
-                    if (!this.hasEndAdjust(fullSolve)) {
-                        if (showPostAdj) {yield * [this.moveListToStr(fullSolve, true) + " " + this.moveListToStr(this.getEndAdjust(nextState), true)]}
-                        else {yield * [this.moveListToStr(fullSolve, true)]}
-                    }
-                } else if (nextDistance <= maxDepth-this.moveWeights[m]) { // false if nextDistance is undefined
-                    yield * this.readPrun(nextState, partialSolve.concat(m), showPostAdj, maxDepth-this.moveWeights[m]);
+    *_readPrunIncremental(state, path, showPostAdj, maxDepth, workspace) {
+        let basePathLength = path.length;
+        let stateBuffers = workspace.stateBuffers;
+        let remainingCosts = workspace.remainingCosts;
+        let nextMoves = workspace.nextMoves;
+        stateBuffers[0] = state;
+        remainingCosts[0] = maxDepth;
+        nextMoves[0] = 0;
+        let depth = 0;
+
+        try {
+            while (depth >= 0) {
+                let move = nextMoves[depth]++;
+                if (move >= this.moves.length) {
+                    if (depth === 0) {break}
+                    depth--;
+                    path.pop();
+                    continue;
                 }
+
+                let previousMove = path.length === 0 ? -1 : path[path.length-1];
+                if (previousMove !== -1 && !this.validPairs[previousMove][move]) {continue}
+
+                if (stateBuffers[depth+1] === undefined) {stateBuffers[depth+1] = new Array(this.pcCount)}
+                let nextState = stateBuffers[depth+1];
+                this.mult(stateBuffers[depth], this.moves[move], nextState);
+                let nextDistance = this.pruneTable.get(this.compressArr(nextState));
+
+                if (nextDistance === 0) {
+                    path.push(move);
+                    if (!this.hasEndAdjust(path)) {
+                        if (showPostAdj) {yield this.moveListToStr(path, true) + " " + this.moveListToStr(this.getEndAdjust(nextState), true)}
+                        else {yield this.moveListToStr(path, true)}
+                    }
+                    path.pop();
+                } else {
+                    let remaining = remainingCosts[depth] - this.moveWeights[move];
+                    if (nextDistance !== undefined && nextDistance <= remaining) {
+                        path.push(move);
+                        remainingCosts[depth+1] = remaining;
+                        nextMoves[depth+1] = 0;
+                        depth++;
+                    }
+                }
+            }
+        } finally {
+            path.length = basePathLength;
+        }
+    }
+
+    // read all solutions from a given state under the prune table's depth
+    *readPrun(state, partialSolve=[], showPostAdj, maxDepth=this.pruneDepth) {
+        let workspace = {stateBuffers: [], remainingCosts: [], nextMoves: []};
+        yield * this._readPrunIncremental(state, partialSolve, showPostAdj, maxDepth, workspace);
+    }
+
+    *_searchDepthBand(seqLength, searchDepth, showPostAdj, paths, stateBuffers, readWorkspaces) {
+        const epsilon = 1e-9;
+        let basePathLengths = paths.map(path => path.length);
+        let movesAtDepth = [];
+        let costsAtDepth = [];
+        let depth = 0;
+        let move = this.nextValidInitial(this.moves.length, this.moveNexts);
+        if (move === -1) {return}
+
+        try {
+            while (move !== -1) {
+                movesAtDepth[depth] = move;
+                let prefixCost = depth === 0 ? 0 : costsAtDepth[depth-1];
+                let totalCost = prefixCost + this.moveWeights[move];
+                costsAtDepth[depth] = totalCost;
+
+                for (let adjustment=0; adjustment<paths.length; adjustment++) {
+                    if (stateBuffers[adjustment][depth+1] === undefined) {
+                        stateBuffers[adjustment][depth+1] = new Array(this.pcCount);
+                    }
+                    this.mult(stateBuffers[adjustment][depth], this.moves[move], stateBuffers[adjustment][depth+1]);
+                    paths[adjustment].push(move);
+                }
+
+                let effectivePrefix = prefixCost + epsilon;
+                if (effectivePrefix < seqLength && effectivePrefix >= seqLength-1) {
+                    let maxPruneCost = Math.min(this.pruneDepth, this.pruneDepth + searchDepth - totalCost);
+                    for (let adjustment=0; adjustment<paths.length; adjustment++) {
+                        let nextState = stateBuffers[adjustment][depth+1];
+                        if (this.pruneTable.has(this.compressArr(nextState))) {
+                            yield * this._readPrunIncremental(nextState, paths[adjustment], showPostAdj, maxPruneCost, readWorkspaces[adjustment]);
+                        }
+                    }
+                }
+
+                if (totalCost + epsilon < seqLength) {
+                    let childMove = this.nextValid(move, this.moves.length, this.moveNexts);
+                    if (childMove !== -1) {
+                        depth++;
+                        move = childMove;
+                        continue;
+                    }
+                }
+
+                while (true) {
+                    for (let adjustment=0; adjustment<paths.length; adjustment++) {paths[adjustment].pop()}
+                    let nextMove = depth === 0
+                        ? this.nextValidInitial(move, this.moveNexts)
+                        : this.nextValid(movesAtDepth[depth-1], move, this.moveNexts);
+                    if (nextMove !== -1) {
+                        move = nextMove;
+                        break;
+                    }
+                    if (depth === 0) {
+                        move = -1;
+                        break;
+                    }
+                    depth--;
+                    move = movesAtDepth[depth];
+                }
+            }
+        } finally {
+            for (let adjustment=0; adjustment<paths.length; adjustment++) {
+                paths[adjustment].length = basePathLengths[adjustment];
             }
         }
     }
 
     // generating function that returns all solutions for a state
     *solve(state, searchDepth, showPostAdj, startDepth=0) {
+        let adjustedStates = this.adjustSequences.map(sequence => this.execute(state, sequence));
+        let paths = this.adjustSequences.map(sequence => sequence.slice());
+        let stateBuffers = adjustedStates.map(adjustedState => [adjustedState]);
+        let readWorkspaces = adjustedStates.map(() => ({stateBuffers: [], remainingCosts: [], nextMoves: []}));
+
         for (let depth=startDepth; depth<=searchDepth; depth++) {
-            for (let [cost, sequence] of this.getSearchSequences(depth)) {
-                let nextState = this.execute(state, sequence);
-                let thisDistance = this.pruneTable.get(this.compressArr(nextState));
-                if (thisDistance !== undefined) {
-                    yield * this.readPrun(nextState, sequence, showPostAdj, Math.min(this.pruneDepth, this.pruneDepth+searchDepth-cost));
+            if (depth === 0) {
+                for (let adjustment=0; adjustment<adjustedStates.length; adjustment++) {
+                    if (this.pruneTable.has(this.compressArr(adjustedStates[adjustment]))) {
+                        yield * this._readPrunIncremental(
+                            adjustedStates[adjustment],
+                            paths[adjustment],
+                            showPostAdj,
+                            Math.min(this.pruneDepth, this.pruneDepth + searchDepth),
+                            readWorkspaces[adjustment]
+                        );
+                    }
                 }
-            }   
-        }  
+            } else {
+                postMessage({value: 1, type: "depthUpdate"});
+                yield * this._searchDepthBand(depth, searchDepth, showPostAdj, paths, stateBuffers, readWorkspaces);
+            }
+        }
     }
 
     // EXPERIMENTAL METHODS
