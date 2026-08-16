@@ -28,7 +28,7 @@
                         </label>
                         <input type="checkbox" id="statVis" checked hidden>
                         <label><input type="checkbox" id="showPostAdj"> Show ending adjustments</label>
-                        <label>Solutions per case <input type="number" class="inputNum" id="maxSolutions" value="5" min="1"></label>
+                        <label>Solutions per case <input type="number" class="inputNum" id="maxSolutions" value="10" min="1"></label>
                     </section>
                     <section class="settings-section" data-settings-panel="image" id="settings-image-panel" hidden></section>
                     <section class="settings-section" data-settings-panel="esq" id="settings-esq-panel" hidden></section>
@@ -109,7 +109,7 @@ _2: 3</textarea></label>
                     <section id="imageOptions" class="category-panel">
                         <h2>Image Options</h2>
                         <label><input type="checkbox" id="imageVis" checked> Show images</label>
-                        <label>Image type <select id="img-select" onchange="imageSelected(this)"><option value="3x3x3-top">3x3x3 top</option><option value="3x3x3">3x3x3</option></select></label>
+                        <label>Image type <select id="img-select" onchange="imageSelected(this)"><option value="3x3x3-top">3x3x3 top</option><option value="3x3x3" selected>3x3x3</option></select></label>
                         <label>Image size <input type="number" class="inputNum" id="imgSize" value="150" oninput="generateImagePreview()"></label>
                         <div id="imgRot"><label>X rotation <input type="number" class="inputNum" id="imgPitch" value="30" oninput="generateImagePreview()"></label><label>Y rotation <input type="number" class="inputNum" id="imgYaw" value="40" oninput="generateImagePreview()"></label></div>
                         <label><input type="checkbox" id="overrideMask" onchange="maskModeChanged('override')"> Override mask</label>

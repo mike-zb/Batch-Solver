@@ -6,6 +6,8 @@ This project is not intended to replace the original Batch Solver or change its
 general purpose. It is an independent version that adapts and simplifies the
 interface for a 3x3-specific workflow.
 
+[Open the live Batch Solver](https://mike-zb.github.io/Batch-Solver/).
+
 The redesign and implementation were created with the help of **OpenAI Codex**.
 
 ## License and attribution
